@@ -21,69 +21,75 @@ export default async function handler(req, res) {
   }
 
   try {
-    const id = String(req.body?.id || "").trim();
+    let id = "";
 
-    const username = process.env.DIGI_USER;
-    const apiKey = process.env.DIGI_KEY;
-    const sku = process.env.DIGI_CEKPLN_CODE;
+    if (typeof req.body === "string") {
+      const params = new URLSearchParams(req.body);
+      id = String(params.get("id") || "").trim();
+    } else {
+      id = String(req.body?.id || "").trim();
+    }
 
     if (!id) {
       return res.status(400).json({
         status: "error",
-        message: "ID pelanggan kosong"
+        message: "ID pelanggan tidak boleh kosong"
       });
     }
 
-    if (!username || !apiKey || !sku) {
+    const username = process.env.DIGI_USER;
+    const apiKey = process.env.DIGI_KEY;
+
+    if (!username || !apiKey) {
       return res.status(500).json({
         status: "error",
-        message: "ENV belum lengkap"
+        message: "DIGI_USER / DIGI_KEY belum diisi"
       });
     }
-
-    const ref_id = "PLN" + Math.floor(Math.random() * 1000000000);
 
     const sign = crypto
       .createHash("md5")
-      .update(username + apiKey + ref_id)
+      .update(username + apiKey + id)
       .digest("hex");
 
-    const response = await fetch("https://api.digiflazz.com/v1/transaction", {
+    const dgResponse = await fetch("https://api.digiflazz.com/v1/inquiry-pln", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
         username: username,
-        buyer_sku_code: sku,
         customer_no: id,
-        ref_id: ref_id,
         sign: sign
       })
     });
 
-    const result = await response.json();
+    const dgJson = await dgResponse.json();
+    const data = dgJson?.data || {};
 
-    if (result.data && result.data.status === "Sukses") {
+    if (data?.name) {
       return res.status(200).json({
         status: "success",
         data: {
-          name: result.data.customer_name || "-",
-          id: result.data.customer_no || id
-        }
+          name: data.name || "-",
+          customer_no: data.customer_no || id,
+          meter_no: data.meter_no || "-",
+          subscriber_id: data.subscriber_id || "-",
+          segment_power: data.segment_power || "-"
+        },
+        raw: dgJson
       });
     }
 
     return res.status(200).json({
       status: "error",
-      message: result.data?.message || "Transaksi gagal",
-      raw: result
+      message: data?.message || dgJson?.message || "Transaksi Gagal",
+      raw: dgJson
     });
-
   } catch (error) {
     return res.status(500).json({
       status: "error",
-      message: error.message || "Server error"
+      message: error.message || "Terjadi kesalahan server"
     });
   }
 }
