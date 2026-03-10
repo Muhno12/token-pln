@@ -15,7 +15,14 @@ export default async function handler(req, res) {
   const apiKey = process.env.DIGI_KEY;
   const sku = process.env.DIGI_CEKPLN_CODE;
 
-  const ref_id = "PLN" + Date.now();
+  if (!id) {
+    return res.status(400).json({
+      status: "error",
+      message: "ID pelanggan kosong"
+    });
+  }
+
+  const ref_id = "PLN" + Math.floor(Math.random() * 1000000000);
 
   const sign = crypto
     .createHash("md5")
@@ -38,21 +45,23 @@ export default async function handler(req, res) {
       })
     });
 
-    const data = await response.json();
+    const result = await response.json();
 
-    if (data.data && data.data.status === "Sukses") {
+    if (result.data && result.data.status === "Sukses") {
+
       return res.status(200).json({
         status: "success",
         data: {
-          name: data.data.customer_name,
-          id: data.data.customer_no
+          name: result.data.customer_name,
+          id: result.data.customer_no
         }
       });
+
     }
 
     return res.status(200).json({
       status: "error",
-      message: data.data?.message || "Transaksi gagal"
+      message: result.data?.message || "Transaksi gagal"
     });
 
   } catch (error) {
