@@ -21,38 +21,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    let id = "";
-
-    if (typeof req.body === "string") {
-      const params = new URLSearchParams(req.body);
-      id = String(params.get("id") || "").trim();
-    } else {
-      id = String(req.body?.id || "").trim();
-    }
-
-    if (!id) {
-      return res.status(400).json({
-        status: "error",
-        message: "ID pelanggan tidak boleh kosong"
-      });
-    }
+    const id = req.body.id;
 
     const username = process.env.DIGI_USER;
     const apiKey = process.env.DIGI_KEY;
-
-    if (!username || !apiKey) {
-      return res.status(500).json({
-        status: "error",
-        message: "DIGI_USER / DIGI_KEY belum diisi"
-      });
-    }
 
     const sign = crypto
       .createHash("md5")
       .update(username + apiKey + id)
       .digest("hex");
 
-    const dgResponse = await fetch("https://api.digiflazz.com/v1/inquiry-pln", {
+    const response = await fetch("https://api.digiflazz.com/v1/inquiry-pln", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -64,32 +43,29 @@ export default async function handler(req, res) {
       })
     });
 
-    const dgJson = await dgResponse.json();
-    const data = dgJson?.data || {};
+    const result = await response.json();
 
-    if (data?.name) {
+    if (result.data) {
       return res.status(200).json({
         status: "success",
         data: {
-          name: data.name || "-",
-          customer_no: data.customer_no || id,
-          meter_no: data.meter_no || "-",
-          subscriber_id: data.subscriber_id || "-",
-          segment_power: data.segment_power || "-"
-        },
-        raw: dgJson
+          name: result.data.name,
+          customer_no: result.data.customer_no,
+          meter_no: result.data.meter_no,
+          segment_power: result.data.segment_power
+        }
       });
     }
 
     return res.status(200).json({
       status: "error",
-      message: data?.message || dgJson?.message || "Transaksi Gagal",
-      raw: dgJson
+      message: result.message || "Data tidak ditemukan"
     });
+
   } catch (error) {
     return res.status(500).json({
       status: "error",
-      message: error.message || "Terjadi kesalahan server"
+      message: error.message
     });
   }
 }
