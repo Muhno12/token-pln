@@ -37,13 +37,6 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!/^\d+$/.test(id)) {
-      return res.status(400).json({
-        status: "error",
-        message: "ID pelanggan harus berupa angka"
-      });
-    }
-
     const username = process.env.DIGI_USER;
     const apiKey = process.env.DIGI_KEY;
 
@@ -71,7 +64,19 @@ export default async function handler(req, res) {
       })
     });
 
-    const dgJson = await dgResponse.json();
+    const dgText = await dgResponse.text();
+
+    let dgJson = null;
+    try {
+      dgJson = JSON.parse(dgText);
+    } catch {
+      return res.status(200).json({
+        status: "error",
+        message: "Response Digiflazz bukan JSON",
+        raw_text: dgText
+      });
+    }
+
     const data = dgJson?.data || {};
 
     if (data?.name) {
