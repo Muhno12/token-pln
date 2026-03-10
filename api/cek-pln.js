@@ -1,17 +1,6 @@
 import crypto from "crypto";
 
-function setCors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-}
-
 export default async function handler(req, res) {
-  setCors(res);
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
 
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -20,88 +9,59 @@ export default async function handler(req, res) {
     });
   }
 
+  const { id } = req.body;
+
+  const username = process.env.DIGI_USER;
+  const apiKey = process.env.DIGI_KEY;
+  const sku = process.env.DIGI_CEKPLN_CODE;
+
+  const ref_id = "PLN" + Date.now();
+
+  const sign = crypto
+    .createHash("md5")
+    .update(username + apiKey + ref_id)
+    .digest("hex");
+
   try {
-    let id = "";
 
-    if (typeof req.body === "string") {
-      const params = new URLSearchParams(req.body);
-      id = String(params.get("id") || "").trim();
-    } else {
-      id = String(req.body?.id || "").trim();
-    }
-
-    if (!id) {
-      return res.status(400).json({
-        status: "error",
-        message: "ID pelanggan tidak boleh kosong"
-      });
-    }
-
-    const username = process.env.DIGI_USER;
-    const apiKey = process.env.DIGI_KEY;
-
-    if (!username || !apiKey) {
-      return res.status(500).json({
-        status: "error",
-        message: "DIGI_USER / DIGI_KEY belum diisi"
-      });
-    }
-
-    const sign = crypto
-      .createHash("md5")
-      .update(username + apiKey + id)
-      .digest("hex");
-
-    const dgResponse = await fetch("https://api.digiflazz.com/v1/inquiry-pln", {
+    const response = await fetch("https://api.digiflazz.com/v1/transaction", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
         username: username,
+        buyer_sku_code: sku,
         customer_no: id,
+        ref_id: ref_id,
         sign: sign
       })
     });
 
-    const dgText = await dgResponse.text();
+    const data = await response.json();
 
-    let dgJson = null;
-    try {
-      dgJson = JSON.parse(dgText);
-    } catch {
-      return res.status(200).json({
-        status: "error",
-        message: "Response Digiflazz bukan JSON",
-        raw_text: dgText
-      });
-    }
-
-    const data = dgJson?.data || {};
-
-    if (data?.name) {
+    if (data.data && data.data.status === "Sukses") {
       return res.status(200).json({
         status: "success",
         data: {
-          name: data.name || "-",
-          customer_no: data.customer_no || id,
-          meter_no: data.meter_no || "-",
-          subscriber_id: data.subscriber_id || "-",
-          segment_power: data.segment_power || "-"
-        },
-        raw: dgJson
+          name: data.data.customer_name,
+          id: data.data.customer_no
+        }
       });
     }
 
     return res.status(200).json({
       status: "error",
-      message: data?.message || dgJson?.message || "Transaksi Gagal",
-      raw: dgJson
+      message: data.data?.message || "Transaksi gagal"
     });
+
   } catch (error) {
+
     return res.status(500).json({
       status: "error",
-      message: error.message || "Terjadi kesalahan server"
+      message: "Server error"
     });
+
   }
+
 }
