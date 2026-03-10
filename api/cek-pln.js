@@ -9,7 +9,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { id } = req.body || {};
+    const body = req.body || {};
+    const id = String(body.id || "").trim();
 
     if (!id) {
       return res.status(400).json({
@@ -18,7 +19,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!/^\d+$/.test(String(id))) {
+    if (!/^\d+$/.test(id)) {
       return res.status(400).json({
         status: "error",
         message: "ID pelanggan harus berupa angka"
@@ -37,7 +38,7 @@ export default async function handler(req, res) {
 
     const sign = crypto
       .createHash("md5")
-      .update(username + apiKey + String(id))
+      .update(username + apiKey + id)
       .digest("hex");
 
     const response = await fetch("https://api.digiflazz.com/v1/inquiry-pln", {
@@ -47,7 +48,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         username: username,
-        customer_no: String(id),
+        customer_no: id,
         sign: sign
       })
     });
@@ -59,7 +60,7 @@ export default async function handler(req, res) {
         status: "success",
         data: {
           name: result.data.name || "-",
-          customer_no: result.data.customer_no || String(id),
+          customer_no: result.data.customer_no || id,
           meter_no: result.data.meter_no || "-",
           subscriber_id: result.data.subscriber_id || "-",
           segment_power: result.data.segment_power || "-"
@@ -69,7 +70,8 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       status: "error",
-      message: result?.data?.message || "Data pelanggan tidak ditemukan"
+      message: result?.data?.message || "Data pelanggan tidak ditemukan",
+      raw: result || null
     });
   } catch (error) {
     return res.status(500).json({
