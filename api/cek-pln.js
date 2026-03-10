@@ -21,20 +21,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = req.body || {};
-    const id = String(body.id || "").trim();
+    let id = "";
+
+    if (typeof req.body === "string") {
+      const params = new URLSearchParams(req.body);
+      id = String(params.get("id") || "").trim();
+    } else {
+      id = String(req.body?.id || "").trim();
+    }
 
     if (!id) {
       return res.status(400).json({
         status: "error",
         message: "ID pelanggan tidak boleh kosong"
-      });
-    }
-
-    if (!/^\d+$/.test(id)) {
-      return res.status(400).json({
-        status: "error",
-        message: "ID pelanggan harus berupa angka"
       });
     }
 
@@ -44,7 +43,7 @@ export default async function handler(req, res) {
     if (!username || !apiKey) {
       return res.status(500).json({
         status: "error",
-        message: "Config server belum lengkap"
+        message: "DIGI_USER / DIGI_KEY belum diisi"
       });
     }
 
@@ -53,7 +52,7 @@ export default async function handler(req, res) {
       .update(username + apiKey + id)
       .digest("hex");
 
-    const response = await fetch("https://api.digiflazz.com/v1/inquiry-pln", {
+    const dgResponse = await fetch("https://api.digiflazz.com/v1/inquiry-pln", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -65,25 +64,41 @@ export default async function handler(req, res) {
       })
     });
 
-    const result = await response.json();
+    const dgText = await dgResponse.text();
 
-    if (result?.data?.name) {
+    let dgJson = null;
+    try {
+      dgJson = JSON.parse(dgText);
+    } catch {
+      return res.status(200).json({
+        status: "error",
+        message: "Response Digiflazz bukan JSON",
+        raw_text: dgText
+      });
+    }
+
+    if (dgJson?.data?.name) {
       return res.status(200).json({
         status: "success",
         data: {
-          name: result.data.name || "-",
-          customer_no: result.data.customer_no || id,
-          meter_no: result.data.meter_no || "-",
-          subscriber_id: result.data.subscriber_id || "-",
-          segment_power: result.data.segment_power || "-"
-        }
+          name: dgJson.data.name || "-",
+          customer_no: dgJson.data.customer_no || id,
+          meter_no: dgJson.data.meter_no || "-",
+          subscriber_id: dgJson.data.subscriber_id || "-",
+          segment_power: dgJson.data.segment_power || "-"
+        },
+        raw: dgJson
       });
     }
 
     return res.status(200).json({
       status: "error",
-      message: result?.data?.message || "Data pelanggan tidak ditemukan",
-      raw: result || null
+      message:
+        dgJson?.data?.message ||
+        dgJson?.message ||
+        dgJson?.data?.rc ||
+        "Transaksi Gagal",
+      raw: dgJson
     });
   } catch (error) {
     return res.status(500).json({
