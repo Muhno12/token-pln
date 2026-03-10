@@ -76,7 +76,8 @@ export default async function handler(req, res) {
           meter_no: data.meter_no || "-",
           subscriber_id: data.subscriber_id || "-",
           segment_power: data.segment_power || "-"
-        }
+        },
+        raw: result
       });
     }
 
