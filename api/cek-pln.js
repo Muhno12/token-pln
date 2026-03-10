@@ -21,10 +21,31 @@ export default async function handler(req, res) {
   }
 
   try {
-    const id = req.body.id;
+    let id = "";
+
+    if (typeof req.body === "string") {
+      const params = new URLSearchParams(req.body);
+      id = String(params.get("id") || "").trim();
+    } else {
+      id = String(req.body?.id || "").trim();
+    }
+
+    if (!id) {
+      return res.status(400).json({
+        status: "error",
+        message: "ID pelanggan tidak boleh kosong"
+      });
+    }
 
     const username = process.env.DIGI_USER;
     const apiKey = process.env.DIGI_KEY;
+
+    if (!username || !apiKey) {
+      return res.status(500).json({
+        status: "error",
+        message: "DIGI_USER / DIGI_KEY belum diisi"
+      });
+    }
 
     const sign = crypto
       .createHash("md5")
@@ -44,28 +65,31 @@ export default async function handler(req, res) {
     });
 
     const result = await response.json();
+    const data = result?.data || {};
 
-    if (result.data) {
+    if (data?.name) {
       return res.status(200).json({
         status: "success",
         data: {
-          name: result.data.name,
-          customer_no: result.data.customer_no,
-          meter_no: result.data.meter_no,
-          segment_power: result.data.segment_power
+          name: data.name || "-",
+          customer_no: data.customer_no || id,
+          meter_no: data.meter_no || "-",
+          subscriber_id: data.subscriber_id || "-",
+          segment_power: data.segment_power || "-"
         }
       });
     }
 
     return res.status(200).json({
       status: "error",
-      message: result.message || "Data tidak ditemukan"
+      message: data?.message || result?.message || "Transaksi Gagal",
+      raw: result
     });
 
   } catch (error) {
     return res.status(500).json({
       status: "error",
-      message: error.message
+      message: error.message || "Terjadi kesalahan server"
     });
   }
 }
