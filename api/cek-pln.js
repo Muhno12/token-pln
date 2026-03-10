@@ -6,6 +6,29 @@ function setCors(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
+function makeRefId() {
+  return "CEKPLN-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+}
+
+function parseNameFromMessage(message = "") {
+  // Coba ambil nama dari pola umum seller/custom response
+  // Contoh yang sering ada: "... nama BUDI SANTOSO ..." atau "Nama: BUDI SANTOSO"
+  const patterns = [
+    /nama[:\s]+([A-Z0-9 .,'\-\/]+)/i,
+    /customer[:\s]+([A-Z0-9 .,'\-\/]+)/i,
+    /pelanggan[:\s]+([A-Z0-9 .,'\-\/]+)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return "";
+}
+
 export default async function handler(req, res) {
   setCors(res);
 
@@ -37,8 +60,16 @@ export default async function handler(req, res) {
       });
     }
 
+    if (!/^\d+$/.test(id)) {
+      return res.status(400).json({
+        status: "error",
+        message: "ID pelanggan harus berupa angka"
+      });
+    }
+
     const username = process.env.DIGI_USER;
     const apiKey = process.env.DIGI_KEY;
+    const buyerSkuCode = process.env.DIGI_CEKPLN_CODE || "E70C00";
 
     if (!username || !apiKey) {
       return res.status(500).json({
@@ -47,19 +78,22 @@ export default async function handler(req, res) {
       });
     }
 
+    const refId = makeRefId();
     const sign = crypto
       .createHash("md5")
-      .update(username + apiKey + id)
+      .update(username + apiKey + refId)
       .digest("hex");
 
-    const dgResponse = await fetch("https://api.digiflazz.com/v1/inquiry-pln", {
+    const dgResponse = await fetch("https://api.digiflazz.com/v1/transaction", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
         username: username,
+        buyer_sku_code: buyerSkuCode,
         customer_no: id,
+        ref_id: refId,
         sign: sign
       })
     });
@@ -77,15 +111,32 @@ export default async function handler(req, res) {
       });
     }
 
-    if (dgJson?.data?.name) {
+    const data = dgJson?.data || {};
+    const message = data.message || dgJson.message || "";
+    const statusText = String(data.status || "").toLowerCase();
+    const rc = String(data.rc || "");
+
+    const parsedName =
+      data.name ||
+      data.customer_name ||
+      data.tr_name ||
+      parseNameFromMessage(message);
+
+    if (
+      parsedName &&
+      (statusText.includes("sukses") ||
+        statusText.includes("success") ||
+        rc === "00" ||
+        message.toLowerCase().includes("sukses"))
+    ) {
       return res.status(200).json({
         status: "success",
         data: {
-          name: dgJson.data.name || "-",
-          customer_no: dgJson.data.customer_no || id,
-          meter_no: dgJson.data.meter_no || "-",
-          subscriber_id: dgJson.data.subscriber_id || "-",
-          segment_power: dgJson.data.segment_power || "-"
+          name: parsedName || "-",
+          customer_no: data.customer_no || id,
+          meter_no: data.meter_no || "-",
+          subscriber_id: data.subscriber_id || "-",
+          segment_power: data.segment_power || data.daya || "-"
         },
         raw: dgJson
       });
@@ -93,11 +144,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       status: "error",
-      message:
-        dgJson?.data?.message ||
-        dgJson?.message ||
-        dgJson?.data?.rc ||
-        "Transaksi Gagal",
+      message: message || "Transaksi Gagal",
       raw: dgJson
     });
   } catch (error) {
